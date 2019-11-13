@@ -2,6 +2,8 @@ package scalers
 
 import (
 	"testing"
+
+	kedav1alpha1 "github.com/kedacore/keda/pkg/apis/keda/v1alpha1"
 )
 
 var testAWSSQSRoleArn = "none"
@@ -19,16 +21,22 @@ var testAWSSQSAuthentication = map[string]string{
 	"awsSecretAccessKey": testAWSSQSSecretAccessKey,
 }
 
+var testAWSSQSAnnotations = map[string]string{
+	kedav1alpha1.PodIdentiyAnnotationKiam: "role-name",
+}
+
 type parseAWSSQSMetadataTestData struct {
-	metadata   map[string]string
-	authParams map[string]string
-	isError    bool
-	comment    string
+	metadata    map[string]string
+	authParams  map[string]string
+	podIdentity string
+	isError     bool
+	comment     string
 }
 
 var testAWSSQSMetadata = []parseAWSSQSMetadataTestData{
 	{map[string]string{},
 		testAWSSQSAuthentication,
+		"",
 		true,
 		"metadata empty"},
 	{map[string]string{
@@ -36,6 +44,7 @@ var testAWSSQSMetadata = []parseAWSSQSMetadataTestData{
 		"queueLength": "1",
 		"awsRegion":   "eu-west-1"},
 		testAWSSQSAuthentication,
+		"",
 		false,
 		"properly formed queue and region"},
 	{map[string]string{
@@ -43,6 +52,7 @@ var testAWSSQSMetadata = []parseAWSSQSMetadataTestData{
 		"queueLength": "1",
 		"awsRegion":   ""},
 		testAWSSQSAuthentication,
+		"",
 		true,
 		"properly formed queue, empty region"},
 	{map[string]string{
@@ -50,6 +60,7 @@ var testAWSSQSMetadata = []parseAWSSQSMetadataTestData{
 		"queueLength": "1",
 		"awsRegion":   "eu-west-1"},
 		testAWSSQSAuthentication,
+		"",
 		false,
 		"properly formed queue, integer queueLength"},
 	{map[string]string{
@@ -57,6 +68,7 @@ var testAWSSQSMetadata = []parseAWSSQSMetadataTestData{
 		"queueLength": "a",
 		"awsRegion":   "eu-west-1"},
 		testAWSSQSAuthentication,
+		"",
 		false,
 		"properly formed queue, invalid queueLength"},
 	{map[string]string{
@@ -67,6 +79,7 @@ var testAWSSQSMetadata = []parseAWSSQSMetadataTestData{
 			"awsAccessKeyId":     testAWSSQSAccessKeyID,
 			"awsSecretAccessKey": testAWSSQSSecretAccessKey,
 		},
+		"",
 		false,
 		"with AWS Credentials from TriggerAuthentication"},
 	{map[string]string{
@@ -77,6 +90,7 @@ var testAWSSQSMetadata = []parseAWSSQSMetadataTestData{
 			"awsAccessKeyId":     "",
 			"awsSecretAccessKey": testAWSSQSSecretAccessKey,
 		},
+		"",
 		true,
 		"with AWS Credentials from TriggerAuthentication, missing Access Key Id"},
 	{map[string]string{
@@ -87,6 +101,7 @@ var testAWSSQSMetadata = []parseAWSSQSMetadataTestData{
 			"awsAccessKeyId":     testAWSSQSAccessKeyID,
 			"awsSecretAccessKey": "",
 		},
+		"",
 		true,
 		"with AWS Credentials from TriggerAuthentication, missing Secret Access Key"},
 	{map[string]string{
@@ -96,13 +111,22 @@ var testAWSSQSMetadata = []parseAWSSQSMetadataTestData{
 		map[string]string{
 			"awsRoleArn": testAWSSQSRoleArn,
 		},
+		"",
 		false,
 		"with AWS Role from TriggerAuthentication"},
+	{map[string]string{
+		"queueURL":    "myqueue",
+		"queueLength": "1",
+		"awsRegion":   "eu-west-1"},
+		map[string]string{},
+		"kiam",
+		false,
+		"with AWS Role from KIAM"},
 }
 
 func TestSQSParseMetadata(t *testing.T) {
 	for _, testData := range testAWSSQSMetadata {
-		_, err := parseAwsSqsQueueMetadata(testData.metadata, testAWSSQSAuthentication, testData.authParams)
+		_, err := parseAwsSqsQueueMetadata(testData.metadata, testAWSSQSAnnotations, testData.authParams, testData.podIdentity)
 		if err != nil && !testData.isError {
 			t.Errorf("Expected success because %s got error, %s", testData.comment, err)
 		}

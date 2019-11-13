@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strconv"
 
+	kedav1alpha1 "github.com/kedacore/keda/pkg/apis/keda/v1alpha1"
+
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
 
@@ -44,8 +46,8 @@ type awsSqsQueueMetadata struct {
 var sqsQueueLog = logf.Log.WithName("aws_sqs_queue_scaler")
 
 // NewAwsSqsQueueScaler creates a new awsSqsQueueScaler
-func NewAwsSqsQueueScaler(resolvedEnv, metadata map[string]string, authParams map[string]string) (Scaler, error) {
-	meta, err := parseAwsSqsQueueMetadata(metadata, resolvedEnv, authParams)
+func NewAwsSqsQueueScaler(resolvedEnv, resolvedAnnotations, metadata, authParams map[string]string, podIdentity string) (Scaler, error) {
+	meta, err := parseAwsSqsQueueMetadata(metadata, resolvedAnnotations, authParams, podIdentity)
 	if err != nil {
 		return nil, fmt.Errorf("Error parsing SQS queue metadata: %s", err)
 	}
@@ -69,7 +71,7 @@ func NewAwsSqsQueueScaler(resolvedEnv, metadata map[string]string, authParams ma
 	}, nil
 }
 
-func parseAwsSqsQueueMetadata(metadata, resolvedEnv, authParams map[string]string) (*awsSqsQueueMetadata, error) {
+func parseAwsSqsQueueMetadata(metadata, resolvedAnnotations, authParams map[string]string, podIdentity string) (*awsSqsQueueMetadata, error) {
 	meta := awsSqsQueueMetadata{}
 	meta.targetQueueLength = defaultTargetQueueLength
 
@@ -95,13 +97,17 @@ func parseAwsSqsQueueMetadata(metadata, resolvedEnv, authParams map[string]strin
 		return nil, fmt.Errorf("no awsRegion given")
 	}
 
-	if authParams["awsRoleArn"] != "" {
-		meta.awsRoleArn = authParams["awsRoleArn"]
-	} else if authParams["awsAccessKeyId"] != "" && authParams["awsSecretAccessKey"] != "" {
-		meta.awsAccessKeyID = authParams["awsAccessKeyId"]
-		meta.awsSecretAccessKey = authParams["awsSecretAccessKey"]
+	if podIdentity == "kiam" {
+		meta.awsRoleArn = resolvedAnnotations[kedav1alpha1.PodIdentiyAnnotationKiam]
 	} else {
-		return nil, fmt.Errorf("No authentication was found")
+		if authParams["awsRoleArn"] != "" {
+			meta.awsRoleArn = authParams["awsRoleArn"]
+		} else if authParams["awsAccessKeyId"] != "" && authParams["awsSecretAccessKey"] != "" {
+			meta.awsAccessKeyID = authParams["awsAccessKeyId"]
+			meta.awsSecretAccessKey = authParams["awsSecretAccessKey"]
+		} else {
+			return nil, fmt.Errorf("No authentication was found")
+		}
 	}
 
 	return &meta, nil
