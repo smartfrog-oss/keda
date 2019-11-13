@@ -75,6 +75,17 @@ func (h *ScaleHandler) createJobs(scaledObject *kedav1alpha1.ScaledObject, scale
 
 }
 
+func (h *ScaleHandler) resolveJobAnnotations(scaledObject *kedav1alpha1.ScaledObject) (map[string]string, error) {
+
+	if len(scaledObject.Spec.JobTargetRef.Template.Spec.Containers) < 1 {
+		return nil, fmt.Errorf("Scaled Object (%s) doesn't have containers", scaledObject.GetName())
+	}
+
+	container := scaledObject.Spec.JobTargetRef.Template
+
+	return h.resolveAnnotations(&container, scaledObject.GetNamespace())
+}
+
 func (h *ScaleHandler) resolveJobEnv(scaledObject *kedav1alpha1.ScaledObject) (map[string]string, error) {
 
 	if len(scaledObject.Spec.JobTargetRef.Template.Spec.Containers) < 1 {

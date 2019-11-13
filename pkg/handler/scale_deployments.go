@@ -102,6 +102,21 @@ func (h *ScaleHandler) scaleFromZero(deployment *appsv1.Deployment, scaledObject
 	}
 }
 
+func (h *ScaleHandler) resolveDeploymentAnnotations(deployment *appsv1.Deployment, containerName string) (map[string]string, error) {
+	deploymentKey, err := cache.MetaNamespaceKeyFunc(deployment)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(deployment.Spec.Template.Spec.Containers) < 1 {
+		return nil, fmt.Errorf("Deployment (%s) doesn't have containers", deploymentKey)
+	}
+
+	podTemplateSpec := deployment.Spec.Template
+
+	return h.resolveAnnotations(&podTemplateSpec, deployment.GetNamespace())
+}
+
 func (h *ScaleHandler) resolveDeploymentEnv(deployment *appsv1.Deployment, containerName string) (map[string]string, error) {
 	deploymentKey, err := cache.MetaNamespaceKeyFunc(deployment)
 	if err != nil {

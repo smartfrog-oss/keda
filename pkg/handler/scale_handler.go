@@ -10,6 +10,7 @@ import (
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -48,6 +49,18 @@ func (h *ScaleHandler) updateScaledObjectStatus(scaledObject *kedav1alpha1.Scale
 		return err
 	}
 	return nil
+}
+
+func (h *ScaleHandler) resolveAnnotations(podTemplateSpec *v1.PodTemplateSpec, namespace string) (map[string]string, error) {
+	resolved := make(map[string]string)
+
+	if podTemplateSpec.ObjectMeta.Annotations != nil {
+		for annotationKey, annotationValue := range podTemplateSpec.ObjectMeta.Annotations {
+			resolved[annotationKey] = annotationValue
+		}
+	}
+
+	return resolved, nil
 }
 
 func (h *ScaleHandler) resolveEnv(container *corev1.Container, namespace string) (map[string]string, error) {
@@ -180,9 +193,14 @@ func (h *ScaleHandler) GetDeploymentScalers(scaledObject *kedav1alpha1.ScaledObj
 		return scalers, nil, fmt.Errorf("error resolving secrets for deployment: %s", err)
 	}
 
+	resolvedAnnotations, err := h.resolveDeploymentAnnotations(deployment, scaledObject.Spec.ScaleTargetRef.ContainerName)
+	if err != nil {
+		return scalers, nil, fmt.Errorf("error resolving annotations for deployment: %s", err)
+	}
+
 	for i, trigger := range scaledObject.Spec.Triggers {
 		authParams, podIdentity := h.parseDeploymentAuthRef(trigger.AuthenticationRef, scaledObject, deployment)
-		scaler, err := h.getScaler(scaledObject.Name, scaledObject.Namespace, trigger.Type, resolvedEnv, trigger.Metadata, authParams, podIdentity)
+		scaler, err := h.getScaler(scaledObject.Name, scaledObject.Namespace, trigger.Type, resolvedEnv, resolvedAnnotations, trigger.Metadata, authParams, podIdentity)
 		if err != nil {
 			return scalers, nil, fmt.Errorf("error getting scaler for trigger #%d: %s", i, err)
 		}
@@ -201,9 +219,14 @@ func (h *ScaleHandler) getJobScalers(scaledObject *kedav1alpha1.ScaledObject) ([
 		return scalers, fmt.Errorf("error resolving secrets for job: %s", err)
 	}
 
+	resolvedAnnotations, err := h.resolveJobAnnotations(scaledObject)
+	if err != nil {
+		return scalers, fmt.Errorf("error resolving annotations for deployment: %s", err)
+	}
+
 	for i, trigger := range scaledObject.Spec.Triggers {
 		authParams, podIdentity := h.parseJobAuthRef(trigger.AuthenticationRef, scaledObject)
-		scaler, err := h.getScaler(scaledObject.Name, scaledObject.Namespace, trigger.Type, resolvedEnv, trigger.Metadata, authParams, podIdentity)
+		scaler, err := h.getScaler(scaledObject.Name, scaledObject.Namespace, trigger.Type, resolvedEnv, resolvedAnnotations, trigger.Metadata, authParams, podIdentity)
 		if err != nil {
 			return scalers, fmt.Errorf("error getting scaler for trigger #%d: %s", i, err)
 		}
@@ -262,14 +285,14 @@ func (h *ScaleHandler) parseAuthRef(triggerAuthRef *kedav1alpha1.ScaledObjectAut
 	return result, podIdentity
 }
 
-func (h *ScaleHandler) getScaler(name, namespace, triggerType string, resolvedEnv, triggerMetadata, authParams map[string]string, podIdentity string) (scalers.Scaler, error) {
+func (h *ScaleHandler) getScaler(name, namespace, triggerType string, resolvedEnv, resolvedAnnotations, triggerMetadata, authParams map[string]string, podIdentity string) (scalers.Scaler, error) {
 	switch triggerType {
 	case "azure-queue":
 		return scalers.NewAzureQueueScaler(resolvedEnv, triggerMetadata, authParams, podIdentity)
 	case "azure-servicebus":
 		return scalers.NewAzureServiceBusScaler(resolvedEnv, triggerMetadata, authParams, podIdentity)
 	case "aws-sqs-queue":
-		return scalers.NewAwsSqsQueueScaler(resolvedEnv, triggerMetadata, authParams)
+		return scalers.NewAwsSqsQueueScaler(resolvedEnv, resolvedAnnotations, triggerMetadata, authParams, podIdentity)
 	case "aws-cloudwatch":
 		return scalers.NewAwsCloudwatchScaler(resolvedEnv, triggerMetadata)
 	case "kafka":
