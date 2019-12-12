@@ -15,6 +15,7 @@ const (
 	ScaleTypeJob ScaledObjectScaleType = "job"
 )
 
+// +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // ScaledObject is a specification for a ScaledObject resource
@@ -79,7 +80,7 @@ type ScaleTriggers struct {
 // +optional
 type ScaledObjectStatus struct {
 	// +optional
-	LastActiveTime  *metav1.Time `json:"lastActiveTime,omitempty"`
+	LastActiveTime *metav1.Time `json:"lastActiveTime,omitempty"`
 	// +optional
 	// +listType
 	ExternalMetricNames []string `json:"externalMetricNames,omitempty"`
